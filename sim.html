@@ -1,0 +1,496 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}.result{border-radius:4px;padding:16px;border:2px solid var(--line);background:#F3F5F7;display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:space-between;align-items:center}
+.result .big{font:700 44px/1 var(--display);letter-spacing:.03em;text-transform:uppercase}
+.result .det{font:500 13.5px/1.5 var(--mono);max-width:46ch}
+.result.missing{background:var(--bad-bg);border-color:var(--bad);color:#6B1610}
+.result.over{background:#FFF3CC;border-color:#B58A00;color:#4A3800}
+.result.match{background:var(--ok-bg);border-color:var(--ok);color:#073D2B}
+.result.warn{background:#FFF3CC;border-color:#B58A00;color:#4A3800}
+.v-over{color:#8A6A00;font-weight:600}
+</style></head><body>
+<title>TransiWeigh Gate Simulator</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a control-room board. Dispatch and gate side by side, verification and alerts below, audit log full width. */
+:root{
+  --bg:#E7EAEE; --panel:#FFFFFF; --ink:#15202B; --muted:#56626F; --line:#C9D0D8;
+  --steel:#121A23; --steel-2:#1D2833; --signal:#F2B705; --signal-ink:#1A1400;
+  --ok:#0B7A55; --ok-bg:#DDF4EA; --bad:#C62A1F; --bad-bg:#FBE3E0; --info:#1B64C8;
+  --led-ok:#3DDC97; --led-bad:#FF6B5E; --led-warn:#F2B705; --led-idle:#9FB0C0;
+  --display:'Barlow Condensed','Arial Narrow',sans-serif;
+  --body:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--body);padding-block:24px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1240px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+h1,h2,h3{font-family:var(--display);font-weight:600;margin:0;text-wrap:balance}
+h1{font-size:clamp(34px,5vw,52px);line-height:1;letter-spacing:.01em}
+h2{font-size:26px;line-height:1.1;letter-spacing:.02em;text-transform:uppercase}
+p{margin:0}
+.eyebrow{font:500 12px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.top{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;justify-content:space-between}
+.top>div{min-width:0}
+.lede{max-width:62ch;color:var(--muted);margin-top:8px}
+.status{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.pill{display:inline-flex;gap:8px;align-items:center;border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:6px 14px;font:500 13px/1.2 var(--mono)}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--ok)}
+.pill.off .dot{background:var(--bad)}
+.switch{display:inline-flex;gap:8px;align-items:center;font-weight:500;cursor:pointer;user-select:none}
+.switch input{width:18px;height:18px;accent-color:var(--ink)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:20px;display:flex;flex-direction:column;gap:16px;min-width:0}
+.card>header{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:baseline;justify-content:space-between}
+.step{font:500 12px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:16px}
+.c5{grid-column:span 5}.c7{grid-column:span 7}.c12{grid-column:1/-1}
+@media(max-width:900px){.c5,.c7{grid-column:1/-1}}
+.scen{display:flex;flex-direction:column;gap:10px}
+.scen-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.scen-row b{font:500 12px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);min-width:96px}
+button{font:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid var(--info);outline-offset:2px}
+.chip{border:1.5px solid var(--ink);background:var(--panel);color:var(--ink);border-radius:4px;padding:8px 12px;font-weight:500;font-size:14px}
+.chip:hover:not(:disabled){background:var(--ink);color:#fff}
+.chip:disabled,.btn:disabled{opacity:.45;cursor:not-allowed}
+.chip.stress{border-style:dashed}
+label.inl{flex-direction:row;align-items:center;gap:8px}label.inl input{width:110px}
+.empty-row td{white-space:normal;color:var(--muted)}
+.rm{border:1.5px solid var(--line);background:#fff;color:var(--bad);border-radius:4px;padding:3px 8px;font-size:12px}
+.btn{border:0;background:var(--signal);color:var(--signal-ink);font-weight:600;font-size:16px;border-radius:4px;padding:12px 20px;box-shadow:0 3px 0 #B58A00}
+.btn:hover:not(:disabled){transform:translateY(1px);box-shadow:0 2px 0 #B58A00}
+.btn.quiet{background:var(--panel);color:var(--ink);border:1.5px solid var(--line);box-shadow:none;font-size:14px;padding:8px 12px}
+.form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.form .full{grid-column:1/-1}
+label{display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:500;color:var(--muted)}
+input,select{font:500 15px/1.2 var(--body);color:var(--ink);background:#fff;border:1.5px solid var(--line);border-radius:4px;padding:9px 10px;width:100%;min-width:0}
+.table-scroll{overflow-x:auto;border:1px solid var(--line);border-radius:4px}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th{font:500 11px/1.2 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);text-align:left;background:#F3F5F7}
+th,td{padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+tr:last-child td{border-bottom:0}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+.mono{font-family:var(--mono)}
+.scene{border:1px solid var(--line);border-radius:4px;overflow:hidden;background:#EEF2F6}
+.scene svg{display:block;width:100%;height:auto}
+.led{background:var(--steel);border-radius:4px;padding:14px 16px;display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:space-between;align-items:center;color:var(--led-idle);font-family:var(--mono)}
+.led .state{font:700 34px/1 var(--display);letter-spacing:.06em;text-transform:uppercase}
+.led .sub{font-size:13px;color:#C7D2DD}
+.led .wt{font:500 clamp(16px,5.5vw,28px)/1.1 var(--mono);font-variant-numeric:tabular-nums;color:#fff;overflow-wrap:anywhere}.led>div{min-width:0;max-width:100%}
+.led[data-s=reading] .state{color:var(--led-warn)}
+.led[data-s=open] .state{color:var(--led-ok)}
+.led[data-s=locked] .state{color:var(--led-bad)}
+.controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;align-items:end}
+.checks{display:flex;flex-wrap:wrap;gap:16px;align-items:center}
+.pipe{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.pipe div{border:1.5px solid var(--line);border-radius:4px;padding:8px 10px;font-size:12.5px;line-height:1.25;color:var(--muted)}
+.pipe b{display:block;font:500 11px/1.2 var(--mono);letter-spacing:.08em;text-transform:uppercase}
+.pipe .on{border-color:var(--ink);background:var(--ink);color:#fff}
+@media(max-width:560px){.pipe{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12.5px;color:var(--muted)}
+.legend i{display:inline-block;width:18px;height:4px;vertical-align:middle;margin-right:6px;border-radius:2px}
+.chart{border:1px solid var(--line);border-radius:4px;background:#fff}
+.chart svg{display:block;width:100%;height:auto}
+.chart .band{fill:#DDF4EA}
+.chart .tgt{stroke:var(--muted);stroke-dasharray:5 4;stroke-width:1.2}
+.chart .raw{fill:none;stroke:#9AA6B2;stroke-width:1.2}
+.chart .fil{fill:none;stroke:var(--info);stroke-width:2.6;stroke-linejoin:round}
+.chart text{font:11px var(--mono);fill:var(--muted)}
+.chart .empty{font:14px var(--body);fill:var(--muted)}
+.calc{display:flex;flex-direction:column;gap:8px;font-family:var(--mono);font-size:14px}
+.calc div{display:flex;flex-wrap:wrap;gap:4px 12px;justify-content:space-between;border-bottom:1px dashed var(--line);padding-bottom:8px}
+.calc div:last-child{border-bottom:0}
+.calc .res{font-weight:500}
+.calc .pass{color:var(--ok)}
+.calc .fail{color:var(--bad)}
+.verdict{border-radius:4px;padding:14px 16px;border:1.5px solid var(--line);background:#F3F5F7}
+.verdict h3{font-size:28px;text-transform:uppercase;letter-spacing:.04em}
+.verdict ul{margin:6px 0 0;padding-left:20px}
+.verdict.open{background:var(--ok-bg);border-color:var(--ok);color:#073D2B}
+.verdict.locked{background:var(--bad-bg);border-color:var(--bad);color:#6B1610}
+.cols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+@media(max-width:700px){.cols{grid-template-columns:1fr}}
+pre{margin:0;background:var(--steel);color:#D4DEE8;border-radius:4px;padding:12px;font:12.5px/1.5 var(--mono);overflow-x:auto;min-height:100px}
+.pre-h{font:500 11px/1.2 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.alerts{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;max-height:460px;overflow-y:auto}
+.alerts li{border:1.5px solid var(--line);border-radius:4px;padding:12px;display:flex;flex-direction:column;gap:6px}
+.alerts li.bad{border-color:var(--bad);background:var(--bad-bg)}
+.alerts .meta{display:flex;flex-wrap:wrap;gap:6px 12px;font:500 11.5px/1.2 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.alerts .empty{border-style:dashed;color:var(--muted)}
+.tag{font-weight:600}
+.v-open{color:var(--ok);font-weight:600}
+.v-locked{color:var(--bad);font-weight:600}
+.chain{font-weight:600}
+.chain.ok{color:var(--ok)}.chain.bad{color:var(--bad)}
+.note{font-size:13px;color:var(--muted);max-width:78ch}
+details.more summary{cursor:pointer;font-weight:600}
+.scale{transition:none}
+.truck{transform:translateX(-380px);transition:transform 1.3s cubic-bezier(.4,0,.2,1)}
+.truck.in{transform:translateX(0)}
+.truck.out{transform:translateX(280px);transition-duration:1.6s}
+.truck.reset{transition:none}
+.arm{transform-origin:600px 150px;transform:rotate(0deg);transition:transform .8s ease}
+.arm.open{transform:rotate(80deg)}
+.waves{opacity:0}
+.scanning .waves{animation:wv .8s ease-in-out infinite}
+@keyframes wv{0%,100%{opacity:.1}50%{opacity:1}}
+@media(prefers-reduced-motion:reduce){.truck,.arm{transition:none}.scanning .waves{animation:none;opacity:1}}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <p class="eyebrow">Team WeighLock · working prototype</p>
+      <h1>TransiWeigh gate simulator</h1>
+      <p class="lede">Enter your own manifest and gate figures. The simulator weighs the load, counts the pieces and tells you how many items are missing or overloaded.</p>
+    </div>
+    <div class="status" aria-live="polite">
+      <span class="pill" id="cloudPill"><span class="dot"></span><span id="cloudTxt">Cloud online</span></span>
+      <label class="switch" for="offlineIn"><input type="checkbox" id="offlineIn"> Simulate internet outage</label>
+    </div>
+  </header>
+
+  
+
+  <main class="grid">
+    <section class="card c5" aria-labelledby="h-dispatch">
+      <header><h2 id="h-dispatch">Company dispatch</h2><span class="step">Step 1 · before the truck leaves</span></header>
+      <form class="form" id="mForm" autocomplete="off">
+        <label for="prodIn">Product name<input id="prodIn" type="text" list="prodList" placeholder="e.g. Steel hardware" required maxlength="40"></label>
+        <label for="idIn">Batch ID (optional)<input id="idIn" type="text" placeholder="auto if blank" maxlength="20"></label>
+        <datalist id="prodList"><option value="Steel hardware"><option value="Hygroscopic cartons"><option value="Tiles"><option value="Cement bags"></datalist>
+        <label for="unitIn">Unit weight (kg)<input id="unitIn" type="number" step="0.01" min="0.01" placeholder="e.g. 10" required></label>
+        <label for="expIn">Expected pieces<input id="expIn" type="number" step="1" min="1" placeholder="your count" required></label>
+        <label for="tareIn">Tare weight (kg)<input id="tareIn" type="number" step="0.1" min="0" placeholder="empty truck + pallets" required></label>
+        <label for="tolIn">Tolerance (% of net)<input id="tolIn" type="number" step="0.05" min="0" placeholder="e.g. 0.2" required></label>
+        <div class="full"><button class="btn quiet" id="regBtn" type="submit">Register manifest</button><p class="note" id="formMsg" role="alert" style="color:var(--bad);font-weight:600;margin-top:8px"></p></div>
+      </form>
+      <div class="table-scroll"><table aria-label="Registered manifests">
+        <thead><tr><th>Batch</th><th>Product</th><th>RFID tag</th><th class="num">Pieces</th><th class="num">Net kg</th><th class="num">Tol. kg</th><th></th></tr></thead>
+        <tbody id="mBody"><tr class="empty-row"><td colspan="8">No manifests yet. Fill in the form above and register one.</td></tr></tbody>
+      </table></div>
+    </section>
+
+    <section class="card c7" aria-labelledby="h-gate">
+      <header><h2 id="h-gate">Godown gate</h2><span class="step">Step 2 · truck arrives</span></header>
+      <div class="scene" id="scene">
+        <svg viewBox="0 0 660 250" role="img" aria-label="Side view of a weighbridge with a truck, an RFID reader on the left and a boom barrier on the right" id="svg">
+          <defs>
+            <pattern id="haz" width="22" height="8" patternUnits="userSpaceOnUse"><rect width="11" height="8" fill="#C62A1F"/><rect x="11" width="11" height="8" fill="#FFFFFF"/></pattern>
+          </defs>
+          <rect x="0" y="220" width="660" height="30" fill="#C9D0D8"/>
+          <rect x="150" y="198" width="330" height="12" fill="#6B7886"/>
+          <g fill="#F2B705" stroke="#15202B" stroke-width="1.5"><rect x="160" y="210" width="26" height="10"/><rect x="262" y="210" width="26" height="10"/><rect x="360" y="210" width="26" height="10"/><rect x="444" y="210" width="26" height="10"/></g>
+          <text x="315" y="240" text-anchor="middle" style="font:11px 'IBM Plex Mono',monospace;fill:#56626F">weighbridge · 4 shear-beam load cells</text>
+          <g id="reader"><rect x="114" y="132" width="8" height="68" fill="#121A23"/><rect x="100" y="104" width="38" height="28" rx="3" fill="#1D2833" stroke="#15202B" stroke-width="2"/>
+            <g class="waves" fill="none" stroke="#1B64C8" stroke-width="3" stroke-linecap="round"><path d="M146 108 Q158 118 146 128"/><path d="M156 100 Q174 118 156 136"/><path d="M166 92 Q190 118 166 144"/></g></g>
+          <text x="119" y="92" text-anchor="middle" style="font:11px 'IBM Plex Mono',monospace;fill:#56626F">UHF RFID</text>
+          <g class="truck reset" id="truck">
+            <rect x="190" y="100" width="200" height="80" fill="#DCE3EA" stroke="#15202B" stroke-width="2.5"/>
+            <path d="M392 128 L430 128 L452 156 L452 180 L392 180Z" fill="#F2B705" stroke="#15202B" stroke-width="2.5" stroke-linejoin="round"/>
+            <path d="M402 136 L426 136 L440 154 L402 154Z" fill="#EEF2F6" stroke="#15202B" stroke-width="2"/>
+            <g id="cargo"></g>
+            <circle cx="232" cy="184" r="14" fill="#15202B"/><circle cx="340" cy="184" r="14" fill="#15202B"/><circle cx="424" cy="184" r="14" fill="#15202B"/>
+            <rect x="392" y="162" width="14" height="10" rx="2" fill="#fff" stroke="#15202B" stroke-width="1.5"/>
+          </g>
+          <rect x="592" y="140" width="24" height="60" fill="#121A23"/>
+          <circle id="gateLight" cx="604" cy="130" r="8" fill="#9FB0C0" stroke="#15202B" stroke-width="2"/>
+          <g class="arm" id="arm"><rect x="466" y="146" width="134" height="8" fill="url(#haz)" stroke="#15202B" stroke-width="1.5"/></g>
+          <text x="560" y="240" text-anchor="middle" style="font:11px 'IBM Plex Mono',monospace;fill:#56626F">boom barrier</text>
+        </svg>
+      </div>
+      <div class="led" id="led" data-s="idle" role="status" aria-live="polite">
+        <div><div class="state" id="ledState">Idle</div><div class="sub" id="ledSub">Waiting for a truck</div></div>
+        <div style="text-align:right"><div class="wt" id="ledWt">0.0 kg</div><div class="sub" id="ledCount">Live count: –</div></div>
+      </div>
+      <div class="controls">
+        <label for="tagSel">Arriving RFID tag<select id="tagSel"></select></label>
+        <label for="expGateIn">Expected pieces (you set it)<input id="expGateIn" type="number" min="1" step="1" placeholder="expected count"></label>
+        <label for="piecesIn">Pieces actually unloaded<input id="piecesIn" type="number" min="0" step="1" placeholder="enter a count"></label>
+        <label for="sandIn">Sand or stones added (kg)<input id="sandIn" type="number" min="0" step="0.1" value="0"></label>
+        <label for="noiseIn">Load-cell noise (kg, 0 = perfect)<input id="noiseIn" type="number" min="0" step="any" value="0.2"></label>
+        <label for="vibAmpIn">Vibration shake (kg), if on<input id="vibAmpIn" type="number" min="0" step="any" value="2"></label>
+      </div>
+      <div class="checks">
+        <label class="switch" for="vibIn"><input type="checkbox" id="vibIn"> Engine vibration</label>
+        <button class="btn" id="runBtn" type="button">Run arrival</button>
+        <p class="note" id="runMsg" role="alert" style="color:var(--bad);font-weight:600;width:100%"></p>
+      </div>
+    </section>
+
+    <section class="card c7" aria-labelledby="h-verify">
+      <header><h2 id="h-verify">Verification</h2><span class="step">Step 3 · edge filter and engine</span></header>
+      <div class="pipe" id="pipe">
+        <div><b>Layer 1</b>Load cells and RFID</div>
+        <div><b>Layer 2</b>Edge filter, 15 samples</div>
+        <div><b id="engName">Layer 3</b><span id="engTxt">Verification engine</span></div>
+        <div><b>Layer 4</b>Gate and portals</div>
+      </div>
+      <div>
+        <div class="legend"><span><i style="background:#9AA6B2"></i>Raw load-cell reading</span><span><i style="background:var(--info)"></i>15-sample moving average</span><span><i style="background:var(--ok-bg);border:1px solid var(--ok)"></i>Tolerance window</span></div>
+        <div class="chart"><svg id="chart" viewBox="0 0 600 190" role="img" aria-label="Chart of raw and filtered gross weight against the manifest tolerance window"><text class="empty" x="300" y="98" text-anchor="middle">Run an arrival to see the load-cell signal settle</text></svg></div>
+      </div>
+      <div class="result" id="result" aria-live="polite"><div class="big" id="rBig">No result yet</div><div class="det" id="rDet">Run an arrival to see how many items are missing or overloaded.</div></div>
+      <div class="calc" id="calc" aria-live="polite"><div><span>W_net = W_gross − W_tare</span><span class="res">–</span></div><div><span>N_calc = round(W_net / W_unit)</span><span class="res">–</span></div><div><span>N_calc == N_expected</span><span class="res">–</span></div><div><span>|W_net − N_expected × W_unit| ≤ tolerance</span><span class="res">–</span></div></div>
+      <div class="verdict" id="verdict" aria-live="polite"><h3 id="vTitle">No arrival yet</h3><ul id="vList"><li>The gate opens only when both checks pass.</li></ul></div>
+      <div class="cols">
+        <div><p class="pre-h">Edge gateway to engine</p><pre id="jsonUp">{ }</pre></div>
+        <div><p class="pre-h">Engine to gate controller</p><pre id="jsonDown">{ }</pre></div>
+      </div>
+    </section>
+
+    <section class="card c5" aria-labelledby="h-alerts">
+      <header><h2 id="h-alerts">Alerts</h2><span class="step">Company and godown owner</span></header>
+      <ul class="alerts" id="alerts"><li class="empty">Alerts appear here when the gate locks or an offline event syncs.</li></ul>
+    </section>
+
+    <section class="card c12" aria-labelledby="h-log">
+      <header><h2 id="h-log">Audit log</h2><span class="step">Step 4 · every arrival, chained by hash</span></header>
+      <div class="scen-row"><span class="chain ok" id="chain">Chain verified, 0 entries</span>
+        <button class="btn quiet" id="tamperBtn" type="button">Tamper with the first entry</button>
+        <button class="btn quiet" id="resetBtn" type="button">Clear log and alerts</button></div>
+      <div class="table-scroll"><table aria-label="Audit log">
+        <thead><tr><th class="num">#</th><th>Time</th><th>Batch</th><th class="num">Counted / expected</th><th>Result</th><th>Verdict</th><th>Checked at</th><th>Entry hash</th></tr></thead>
+        <tbody id="logBody"><tr><td colspan="8" style="white-space:normal;color:var(--muted)">No arrivals yet. Register a manifest and run an arrival.</td></tr></tbody>
+      </table></div>
+      <p class="note">Simulation notes: every figure comes from the inputs you enter. Load-cell noise and vibration shake are absolute errors in kg that you set (0 gives a perfect sensor), and the 15-sample average removes most of the shake. Tolerance is a percentage of the expected net weight. A truck whose swapped load weighs within the tolerance window of what was removed passes the weight check, which is why the full design adds camera snapshots and pallet-level weighing. Exact counting also needs the total weighing error to stay under half a unit weight, so light units on a truck scale are far harder to count than heavy ones.</p>
+    </section>
+  </main>
+</div>
+
+<script>
+(function(){
+  var $=function(id){return document.getElementById(id)};
+  var sleep=function(ms){return new Promise(function(r){setTimeout(r,ms)})};
+  function cyrb53(str,seed){seed=seed||0;var h1=0xdeadbeef^seed,h2=0x41c6ce57^seed;for(var i=0,ch;i<str.length;i++){ch=str.charCodeAt(i);h1=Math.imul(h1^ch,2654435761);h2=Math.imul(h2^ch,1597334677)}h1=Math.imul(h1^(h1>>>16),2246822507)^Math.imul(h2^(h2>>>13),3266489909);h2=Math.imul(h2^(h2>>>16),2246822507)^Math.imul(h1^(h1>>>13),3266489909);return (4294967296*(2097151&h2)+(h1>>>0)).toString(16).padStart(14,'0')}
+  function gauss(){var u=0,v=0;while(!u)u=Math.random();while(!v)v=Math.random();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v)}
+  function fmt(n,d){d=d==null?1:d;return n.toLocaleString('en-IN',{minimumFractionDigits:d,maximumFractionDigits:d})}
+  function now(){return new Date().toLocaleTimeString('en-IN',{hour12:false})}
+
+  function esc(t){return String(t).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+  var manifests=[],counter=0,log=[],pending=0,running=false,N=48;
+
+  function addManifest(id,prod,unit,exp,tare,tol){
+    manifests.push({id:id,product:prod,unit:unit,expected:exp,tare:tare,tolPct:tol,uid:'E2'+cyrb53(id).slice(0,8).toUpperCase()});
+  }
+
+  function netOf(m){return m.unit*m.expected}
+  function tolKgOf(m){return m.tolPct/100*netOf(m)}
+
+  function renderManifests(){
+    $('mBody').innerHTML=manifests.length?manifests.map(function(m){
+      return '<tr><td class="tag">'+esc(m.id)+'</td><td>'+esc(m.product)+'</td><td class="mono">'+m.uid+'</td><td class="num">'+fmt(m.expected,0)+'</td><td class="num">'+fmt(netOf(m),1)+'</td><td class="num">±'+fmt(tolKgOf(m),2)+'</td><td><button class="rm" type="button" data-rm="'+esc(m.id)+'" aria-label="Remove '+esc(m.id)+'">Remove</button></td></tr>';
+    }).join(''):'<tr class="empty-row"><td colspan="8">No manifests yet. Fill in the form above and register one.</td></tr>';
+    var cur=$('tagSel').value;
+    $('tagSel').innerHTML=manifests.map(function(m){return '<option value="'+esc(m.id)+'">'+esc(m.id)+' · '+esc(m.product)+'</option>'}).join('')+'<option value="__unk">Unregistered tag</option>';
+    if(cur&&Array.prototype.some.call($('tagSel').options,function(o){return o.value===cur}))$('tagSel').value=cur;
+  }
+  $('mBody').addEventListener('click',function(e){
+    var id=e.target.getAttribute&&e.target.getAttribute('data-rm');if(!id||running)return;
+    manifests=manifests.filter(function(m){return m.id!==id});renderManifests();
+    var m=manifests.find(function(x){return x.id===$('tagSel').value});$('piecesIn').value=m?m.expected:'';$('expGateIn').value=m?m.expected:'';
+  });
+
+  $('mForm').addEventListener('submit',function(e){
+    e.preventDefault();
+    if($('offlineIn').checked){formMsg('The cloud is unreachable. Reconnect to register a new batch.');return}
+    var prod=$('prodIn').value.trim(),unit=+$('unitIn').value,exp=Math.round(+$('expIn').value),tare=+$('tareIn').value,tol=+$('tolIn').value;
+    if(!prod||!(unit>0)||!(exp>0)||!($('tareIn').value!=='')||tare<0||$('tolIn').value===''||tol<0){formMsg('Fill in every field with a valid number first.');return}
+    var id=$('idIn').value.trim().toUpperCase();
+    if(!id){do{counter++;id='BATCH-'+String(counter).padStart(4,'0')}while(manifests.some(function(m){return m.id===id}))}
+    else if(manifests.some(function(m){return m.id===id})){formMsg('Batch ID '+id+' already exists. Pick another ID or leave it blank.');return}
+    addManifest(id,prod,unit,exp,tare,tol);formMsg('');runMsg('');
+    renderManifests();$('tagSel').value=id;$('piecesIn').value=exp;$('expGateIn').value=exp;
+    $('idIn').value='';
+  });
+  $('tagSel').addEventListener('change',function(){var m=manifests.find(function(x){return x.id===$('tagSel').value});if(m){$('piecesIn').value=m.expected;$('expGateIn').value=m.expected}});
+
+  function setLed(state,title,sub,wt,count){
+    var l=$('led');l.setAttribute('data-s',state);$('ledState').textContent=title;$('ledSub').textContent=sub;
+    if(wt!=null)$('ledWt').textContent=fmt(wt,1)+' kg';
+    if(count!=null)$('ledCount').textContent=count;
+    var c={idle:'#9FB0C0',reading:'#F2B705',open:'#3DDC97',locked:'#FF6B5E'}[state];$('gateLight').setAttribute('fill',c);
+  }
+  function setPipe(n){var d=$('pipe').children;for(var i=0;i<d.length;i++)d[i].className=i<n?'on':''}
+
+  function drawCargo(filled,sacks){
+    var s='';
+    for(var i=0;i<12;i++){
+      var x=198+(i%4)*48,y=104+Math.floor(i/4)*25;
+      if(i<filled)s+='<rect x="'+x+'" y="'+y+'" width="40" height="22" fill="#B7792E" stroke="#15202B" stroke-width="1.5"/>';
+      else if(sacks)s+='<rect x="'+x+'" y="'+y+'" width="40" height="22" rx="9" fill="#D9C9A3" stroke="#15202B" stroke-width="1.5"/>';
+      else s+='<rect x="'+x+'" y="'+y+'" width="40" height="22" fill="none" stroke="#9AA6B2" stroke-width="1.5" stroke-dasharray="4 3"/>';
+    }
+    $('cargo').innerHTML=s;
+  }
+  function truckReset(){var t=$('truck');t.setAttribute('class','truck reset');void t.getBoundingClientRect();}
+  function truckSet(cls){$('truck').setAttribute('class','truck '+cls)}
+
+  function ax(v){return Math.abs(v)>=1e7?v.toExponential(4):fmt(v,0)}
+  function drawChart(raw,filt,target,tolKg,hasBand){
+    var W=600,H=190,pl=76,pr=12,pt=10,pb=22;
+    var half=Math.max((tolKg||0)*5,target*0.01),lo=target-half,hi=target+half;
+    var X=function(i){return pl+i*(W-pl-pr)/(N-1)};
+    var Y=function(v){var c=Math.min(hi,Math.max(lo,v));return pt+(1-(c-lo)/(hi-lo))*(H-pt-pb)};
+    var s='';
+    if(hasBand&&tolKg>0)s+='<rect class="band" x="'+pl+'" y="'+Y(target+tolKg)+'" width="'+(W-pl-pr)+'" height="'+(Y(target-tolKg)-Y(target+tolKg))+'"/>';
+    s+='<line class="tgt" x1="'+pl+'" x2="'+(W-pr)+'" y1="'+Y(target)+'" y2="'+Y(target)+'"/>';
+    var pr1=raw.map(function(v,i){return X(i).toFixed(1)+','+Y(v).toFixed(1)}).join(' ');
+    var pf=filt.map(function(v,i){return X(i).toFixed(1)+','+Y(v).toFixed(1)}).join(' ');
+    s+='<polyline class="raw" points="'+pr1+'"/><polyline class="fil" points="'+pf+'"/>';
+    s+='<text x="'+(pl-6)+'" y="'+(pt+10)+'" text-anchor="end">'+ax(hi)+'</text><text x="'+(pl-6)+'" y="'+(Y(target)+4)+'" text-anchor="end">'+ax(target)+'</text><text x="'+(pl-6)+'" y="'+(H-pb)+'" text-anchor="end">'+ax(lo)+'</text>';
+    s+='<text x="'+pl+'" y="'+(H-4)+'">kg · expected gross, dashed</text><text x="'+(W-pr)+'" y="'+(H-4)+'" text-anchor="end">sample</text>';
+    $('chart').innerHTML=s;
+  }
+
+  function pushAlert(kind,title,body,chan){
+    var ul=$('alerts');var e=ul.querySelector('.empty');if(e)e.remove();
+    var li=document.createElement('li');if(kind==='bad')li.className='bad';
+    li.innerHTML='<div class="meta"><span>'+(chan||'System')+'</span><span>'+now()+'</span></div><strong>'+title+'</strong><span>'+body+'</span>';
+    ul.insertBefore(li,ul.firstChild);
+  }
+
+  function entryHash(prev,e){return cyrb53(prev+'|'+e.batch+'|'+e.counted+'|'+e.expected+'|'+e.verdict+'|'+e.src+'|'+e.t)}
+  function addLog(e){var prev=log.length?log[log.length-1].hash:'GENESIS';e.prev=prev;e.hash=entryHash(prev,e);log.push(e);renderLog()}
+  function verifyChain(){var prev='GENESIS';for(var i=0;i<log.length;i++){var e=log[i];if(e.prev!==prev||entryHash(prev,e)!==e.hash)return i;prev=e.hash}return -1}
+  function renderLog(){
+    var b=$('logBody');
+    if(!log.length){b.innerHTML='<tr><td colspan="8" style="white-space:normal;color:var(--muted)">No arrivals yet. Register a manifest and run an arrival.</td></tr>'}
+    else b.innerHTML=log.slice().reverse().map(function(e,k){var n=log.length-k;
+      return '<tr><td class="num">'+n+'</td><td class="mono">'+e.t+'</td><td class="tag">'+e.batch+'</td><td class="num">'+e.counted+' / '+e.expected+'</td><td class="'+(e.counted<e.expected&&e.batch!=='UNREGISTERED'?'v-locked':e.counted>e.expected?'v-over':'')+'">'+diffText(e)+'</td><td class="'+(e.verdict==='Open'?'v-open':'v-locked')+'">'+e.verdict+'</td><td>'+e.src+'</td><td class="mono">'+e.hash.slice(0,10)+'</td></tr>'}).join('');
+    var bad=verifyChain(),c=$('chain');
+    if(bad<0){c.className='chain ok';c.textContent='Chain verified, '+log.length+(log.length===1?' entry':' entries')}
+    else{c.className='chain bad';c.textContent='Chain broken at entry '+(bad+1)+': a record was changed after it was written'}
+  }
+  $('tamperBtn').addEventListener('click',function(){if(!log.length)return;log[0].counted+=1;renderLog()});
+  $('resetBtn').addEventListener('click',function(){log=[];pending=0;renderLog();$('alerts').innerHTML='<li class="empty">Alerts appear here when the gate locks or an offline event syncs.</li>'});
+
+  function updateCloud(){
+    var off=$('offlineIn').checked;
+    $('cloudPill').className='pill'+(off?' off':'');$('cloudTxt').textContent=off?'Cloud offline · edge server active':'Cloud online';
+    $('engName').textContent=off?'Edge server':'Cloud engine';$('engTxt').textContent=off?'Local Raspberry Pi, cached manifests':'FastAPI + PostgreSQL';
+    $('regBtn').disabled=off;
+    if(!off&&pending>0){pushAlert('info','Connection restored','Synced '+pending+' queued '+(pending===1?'event':'events')+' from the edge server to the cloud.');pending=0}
+  }
+  $('offlineIn').addEventListener('change',updateCloud);
+
+  function setResult(cls,big,det){var r=$('result');r.className='result '+cls;$('rBig').textContent=big;$('rDet').textContent=det}
+  function diffText(e){if(e.batch==='UNREGISTERED')return 'Unknown batch';var d=e.counted-e.expected;return d===0?'Exact match':(d<0?Math.abs(d)+' missing':d+' overloaded')}
+  function resetOutputs(){setResult('','Weighing…','Counting pieces from the stabilized weight.');
+    $('chart').innerHTML='<text class="empty" x="300" y="98" text-anchor="middle">Reading the load cells…</text>';
+    var rows=document.querySelectorAll('#calc .res');for(var i=0;i<rows.length;i++){rows[i].textContent='–';rows[i].className='res'}
+    var v=$('verdict');v.className='verdict';$('vTitle').textContent='Verifying…';$('vList').innerHTML='<li>Waiting for the stabilized weight.</li>';
+    $('jsonUp').textContent='{ }';$('jsonDown').textContent='{ }';setPipe(0);
+  }
+
+  function runMsg(t){$('runMsg').textContent=t||''}
+  function formMsg(t){$('formMsg').textContent=t||''}
+  async function run(){
+    if(running)return;
+    if(!manifests.length){runMsg('Step 1 first: fill in the Company dispatch form and click Register manifest, then run the arrival.');return}
+    if($('tagSel').value!=='__unk'&&$('piecesIn').value.trim()===''){runMsg('Enter the number of pieces actually unloaded, then run the arrival.');$('piecesIn').focus();return}
+    runMsg('');running=true;
+    var ctl=document.querySelectorAll('#runBtn,.chip,#tagSel,#piecesIn,#sandIn,#vibIn,#offlineIn,#noiseIn,#vibAmpIn,#expGateIn');
+    ctl.forEach(function(c){c.disabled=true});
+    try{
+      var tagV=$('tagSel').value,piecesRaw=$('piecesIn').value,pieces=Math.max(0,Math.round(+piecesRaw||0)),sand=Math.max(0,+$('sandIn').value||0);
+      var noiseKg=Math.max(0,+$('noiseIn').value||0),vibKg=Math.max(0,+$('vibAmpIn').value||0);
+      var vib=$('vibIn').checked,offline=$('offlineIn').checked;
+      var m=manifests.find(function(x){return x.id===tagV})||null;
+      var expOv=Math.round(+$('expGateIn').value);
+      if(m&&expOv>0&&expOv!==m.expected)m=Object.assign({},m,{expected:expOv});
+      var src=offline?'Edge server':'Cloud';
+      if(m&&piecesRaw===''){pushAlert('info','Enter the pieces unloaded','Type how many pieces were actually unloaded, then run the arrival.');return}
+      resetOutputs();
+      var filled=m?Math.max(0,Math.min(12,Math.round(12*pieces/m.expected))):12;
+      drawCargo(filled,sand>0&&filled<12);
+      truckReset();setLed('reading','Truck arriving','Approaching the weighbridge',0,'Live count: –');
+      await sleep(30);truckSet('in');await sleep(1400);
+
+      document.getElementById('svg').classList.add('scanning');setPipe(1);
+      setLed('reading','Reading tag','UHF RFID scan in progress',0,'Live count: –');await sleep(900);
+      document.getElementById('svg').classList.remove('scanning');
+      var uid=m?m.uid:'E2-0000-UNREG';
+      if(!m){
+        setPipe(3);
+        $('chart').innerHTML='<text class="empty" x="300" y="98" text-anchor="middle">No weighing: the tag is not on any manifest</text>';
+        var up0={node:'gw-01',tag:uid};var dn0={verdict:'LOCK',reason:'UNKNOWN_BATCH'};
+        $('jsonUp').textContent=JSON.stringify(up0,null,2);$('jsonDown').textContent=JSON.stringify(dn0,null,2);
+        var v0=$('verdict');v0.className='verdict locked';$('vTitle').textContent='Gate locked';$('vList').innerHTML='<li>Tag '+uid+' matches no registered manifest.</li><li>Nothing is weighed and the gate stays shut.</li>';
+        setLed('locked','Gate locked','Unknown batch',0,'Live count: –');setResult('warn','Unknown batch','Tag '+uid+' is not on any manifest, so no pieces were counted.');
+        pushAlert('bad','Unregistered shipment at the gate','Tag '+uid+' is not on any manifest. Gate locked.','Telegram + SMS');
+        addLog({t:now(),batch:'UNREGISTERED',counted:0,expected:0,verdict:'Locked',src:src});
+        await sleep(600);return;
+      }
+
+      var tolKg=tolKgOf(m),expNet=netOf(m),target=expNet+m.tare;
+      var trueGross=pieces*m.unit+sand+m.tare;
+      var sigma=noiseKg*(vib?1.5:1),amp=Math.max(tolKg*4,trueGross*0.008);var phase=Math.random()*6.283,vibAmp=vib?vibKg:0;
+      var raw=[],filt=[];
+      for(var i=0;i<N;i++){
+        var ov=i<24?amp*Math.exp(-i/5)*Math.cos(i*0.9):0;
+        var shake=vibAmp*Math.sin(2*Math.PI*i/7+phase);var spike=(vib&&Math.random()<0.03)?gauss()*sigma*2:0;
+        raw.push(trueGross+ov+shake+gauss()*sigma+spike);
+        var from=Math.max(0,raw.length-15),sum=0;for(var k=from;k<raw.length;k++)sum+=raw[k];
+        filt.push(sum/(raw.length-from));
+        drawChart(raw,filt,target,tolKg,true);
+        var f=filt[filt.length-1];
+        setLed('reading','Weighing','Moving average, '+Math.min(15,raw.length)+' samples',f,'Live count: '+Math.max(0,Math.round((f-m.tare)/m.unit)));
+        await sleep(55);
+      }
+      var wg=Math.round(filt[filt.length-1]*10)/10;
+      setPipe(2);
+      var up={node:'gw-01',tag:uid,weight_kg:wg,samples:15,ts:now()};
+      $('jsonUp').textContent=JSON.stringify(up,null,2);
+      await sleep(650);
+
+      var wnet=wg-m.tare,ncalc=Math.round(wnet/m.unit),err=Math.abs(wnet-m.expected*m.unit);
+      var c1=ncalc===m.expected,c2=err<=tolKg,open=c1&&c2;
+      var rows=document.querySelectorAll('#calc .res');
+      rows[0].textContent=fmt(wg,1)+' − '+fmt(m.tare,1)+' = '+fmt(wnet,1)+' kg';
+      rows[1].textContent='round('+fmt(wnet,1)+' / '+fmt(m.unit,2)+') = '+fmt(ncalc,0);
+      rows[2].textContent=fmt(ncalc,0)+' == '+fmt(m.expected,0)+(c1?' · pass':' · fail');rows[2].className='res '+(c1?'pass':'fail');
+      rows[3].textContent=fmt(err,2)+' kg ≤ '+fmt(tolKg,2)+' kg'+(c2?' · pass':' · fail');rows[3].className='res '+(c2?'pass':'fail');
+      var dn={verdict:open?'OPEN':'LOCK',batch:m.id,counted:ncalc,expected:m.expected,net_kg:+wnet.toFixed(1),error_kg:+err.toFixed(2),tolerance_kg:+tolKg.toFixed(2),checked_at:offline?'edge':'cloud'};
+      $('jsonDown').textContent=JSON.stringify(dn,null,2);
+      var reasons=[];
+      if(!c1){var d=m.expected-ncalc;reasons.push('Count mismatch: '+fmt(ncalc,0)+' counted, '+fmt(m.expected,0)+' expected ('+Math.abs(d)+(d>0?' missing':' extra')+').')}
+      if(c1&&!c2)reasons.push('Piece count matches but the weight is off by '+fmt(err,2)+' kg, outside the ±'+fmt(tolKg,2)+' kg window.');
+      if(open)reasons.push('Count and weight both match the manifest for '+m.id+'.');
+      if(offline)reasons.push('Verified on the local edge server, queued for cloud sync.');
+      var v=$('verdict');v.className='verdict '+(open?'open':'locked');$('vTitle').textContent=open?'Gate open':'Gate locked';
+      $('vList').innerHTML=reasons.map(function(r){return '<li>'+r+'</li>'}).join('');
+      var dlt=ncalc-m.expected,absd=Math.abs(dlt),wdiff=wnet-m.expected*m.unit;
+      if(dlt<0)setResult('missing',absd+(absd===1?' item':' items')+' missing','Expected '+fmt(m.expected,0)+', counted '+fmt(ncalc,0)+'. Weight is '+fmt(Math.abs(wdiff),2)+' kg under the manifest net.');
+      else if(dlt>0)setResult('over',absd+(absd===1?' item':' items')+' overloaded','Expected '+fmt(m.expected,0)+', counted '+fmt(ncalc,0)+'. Weight is '+fmt(Math.abs(wdiff),2)+' kg over the manifest net.');
+      else if(!c2)setResult('warn','Count matches, weight off','All '+fmt(m.expected,0)+' pieces counted, but net weight differs by '+fmt(Math.abs(wdiff),2)+' kg (limit ±'+fmt(tolKg,2)+' kg).');
+      else setResult('match','No items missing','Counted '+fmt(ncalc,0)+' of '+fmt(m.expected,0)+'. Weight within ±'+fmt(tolKg,2)+' kg.');
+      setPipe(4);
+      if(open){
+        setLed('open','Gate open',m.id+' verified',wg,'Counted: '+fmt(ncalc,0)+' / '+fmt(m.expected,0));
+        $('arm').classList.add('open');await sleep(900);truckSet('out');
+      }else{
+        setLed('locked','Gate locked',c1?'Weight outside tolerance':fmt(Math.abs(m.expected-ncalc),0)+(m.expected>ncalc?' pieces missing':' pieces extra'),wg,'Counted: '+fmt(ncalc,0)+' / '+fmt(m.expected,0));
+        pushAlert('bad','Gate locked for '+m.id,(c1?'Weight error '+fmt(err,2)+' kg exceeds ±'+fmt(tolKg,2)+' kg.':'Expected '+fmt(m.expected,0)+' pieces, counted '+fmt(ncalc,0)+' ('+Math.abs(m.expected-ncalc)+(m.expected>ncalc?' missing':' extra')+').'),'Telegram + SMS');
+      }
+      if(offline){pending++;pushAlert('info','Event queued offline','Entry for '+m.id+' is stored on the edge server and syncs when the connection returns.','Edge server')}
+      addLog({t:now(),batch:m.id,counted:ncalc,expected:m.expected,verdict:open?'Open':'Locked',src:src});
+      await sleep(open?1700:400);
+      if(open){$('arm').classList.remove('open')}
+    }finally{
+      running=false;
+      document.querySelectorAll('#runBtn,.chip,#tagSel,#piecesIn,#sandIn,#vibIn,#offlineIn,#noiseIn,#vibAmpIn,#expGateIn').forEach(function(c){c.disabled=false});
+      updateCloudDisabled();renderManifests();
+    }
+  }
+  function updateCloudDisabled(){$('regBtn').disabled=$('offlineIn').checked}
+
+  $('runBtn').addEventListener('click',run);
+
+  renderManifests();updateCloud();drawCargo(12,false);setPipe(0);
+  document.getElementById('truck').setAttribute('class','truck in');
+})();
+</script>
+
+</body></html>
